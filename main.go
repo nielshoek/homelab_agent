@@ -14,18 +14,39 @@ type DeployRequest struct {
 	EnvironmentVars map[string]string `json:"environment_vars"`
 }
 
+// Deploy token for authenticating requests.
 var deployToken string
+
+// GitHub token used to fetch the docker compose file and pull the image.
 var gitHubToken string
 
+// SSL certificate and key file paths.
+var certFile string
+var keyFile string
+
 func main() {
-	deployToken = os.Getenv("DEPLOY_TOKEN")
-	gitHubToken = os.Getenv("GITHUB_TOKEN")
-	if deployToken == "" {
-		log.Fatal("DEPLOY_TOKEN environment variable not set.")
-	}
+	getAndSetEnvVars()
+
 	http.HandleFunc("POST /deploy", deployHandler)
 	fmt.Println("Server listening on port 9090.")
-	log.Fatal(http.ListenAndServe(":9090", nil))
+	log.Fatal(http.ListenAndServeTLS("0.0.0.0:9090", certFile, keyFile, nil))
+}
+
+func getAndSetEnvVars() {
+	if deployToken = os.Getenv("DEPLOY_TOKEN"); deployToken == "" {
+		log.Fatal("DEPLOY_TOKEN environment variable not set.")
+	}
+
+	if gitHubToken = os.Getenv("GITHUB_TOKEN"); gitHubToken == "" {
+		log.Fatal("GITHUB_TOKEN environment variable not set.")
+	}
+
+	certFile := os.Getenv("SSL_CERT_PATH")
+	keyFile := os.Getenv("SSL_KEY_PATH")
+
+	if certFile == "" || keyFile == "" {
+		log.Fatal("SSL certificate or key file path not set in environment variables.")
+	}
 }
 
 func deployHandler(w http.ResponseWriter, r *http.Request) {
@@ -34,7 +55,6 @@ func deployHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Invalid JSON payload.", http.StatusBadRequest)
 		return
 	}
-	fmt.Println(deployRequest)
 
 	suppliedToken := r.Header.Get("Authorization")
 	if suppliedToken != deployToken {
