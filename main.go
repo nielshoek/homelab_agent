@@ -29,7 +29,7 @@ func main() {
 
 	http.HandleFunc("POST /deploy", deployHandler)
 	fmt.Println("Server listening on port 9090.")
-	log.Fatal(http.ListenAndServeTLS("0.0.0.0:9090", certFile, keyFile, nil))
+	log.Fatal(http.ListenAndServe("0.0.0.0:9090", nil))
 }
 
 func getAndSetEnvVars() {
@@ -39,13 +39,6 @@ func getAndSetEnvVars() {
 
 	if gitHubToken = os.Getenv("GITHUB_TOKEN"); gitHubToken == "" {
 		log.Fatal("GITHUB_TOKEN environment variable not set.")
-	}
-
-	certFile := os.Getenv("SSL_CERT_PATH")
-	keyFile := os.Getenv("SSL_KEY_PATH")
-
-	if certFile == "" || keyFile == "" {
-		log.Fatal("SSL certificate or key file path not set in environment variables.")
 	}
 }
 
