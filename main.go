@@ -14,22 +14,22 @@ type DeployRequest struct {
 	EnvironmentVars map[string]string `json:"environment_vars"`
 }
 
-// Deploy token for authenticating requests.
+// Deploy token which requests are authenticated against.
 var deployToken string
 
 // GitHub token used to fetch the docker compose file and pull the image.
 var gitHubToken string
 
-// SSL certificate and key file paths.
-var certFile string
-var keyFile string
+// Server port to listen on.
+var portNumber string
 
 func main() {
 	getAndSetEnvVars()
 
 	http.HandleFunc("POST /deploy", deployHandler)
-	fmt.Println("Server listening on port 9090.")
-	log.Fatal(http.ListenAndServe("0.0.0.0:9090", nil))
+
+	fmt.Printf("Server listening on port %s.\n", portNumber)
+	log.Fatal(http.ListenAndServe("0.0.0.0:"+portNumber, nil))
 }
 
 func getAndSetEnvVars() {
@@ -39,6 +39,11 @@ func getAndSetEnvVars() {
 
 	if gitHubToken = os.Getenv("GITHUB_TOKEN"); gitHubToken == "" {
 		log.Fatal("GITHUB_TOKEN environment variable not set.")
+	}
+
+	if portNumber = os.Getenv("PORT"); portNumber == "" {
+		portNumber = "9090"
+		log.Println("PORT environment variable not set. Using default port 9090.")
 	}
 }
 
@@ -82,8 +87,18 @@ func handleDeployment(applicationName string, environmentVars map[string]string)
 		return err
 	}
 
+	removeDanglingImages()
+
 	log.Printf("Application '%s' updated successfully.\n", applicationName)
 	return nil
+}
+
+func removeDanglingImages() {
+	cmd := exec.Command("docker", "image", "prune", "-f")
+	if err := cmd.Run(); err != nil {
+		log.Println("Failed to remove dangling images:", err)
+	}
+	log.Println("Removed dangling images.")
 }
 
 // Pulls latest images and (re)starts the Docker containers.
