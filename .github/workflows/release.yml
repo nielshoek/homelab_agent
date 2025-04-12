@@ -45,4 +45,5 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: homelab_agent
-          token: ${{ secrets.CUSTOM_GH_TOKEN }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.CUSTOM_GH_TOKEN }}
