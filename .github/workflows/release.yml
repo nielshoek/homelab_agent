@@ -35,15 +35,14 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+
     steps:
       - name: Download build artifact
         uses: actions/download-artifact@v4
         with:
           name: homelab_agent
 
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+      - uses: ncipollo/release-action@v1
         with:
-          files: homelab_agent
-        env:
-          GITHUB_TOKEN: ${{ secrets.CUSTOM_GH_TOKEN }}
+          artifacts: homelab_agent
+          token: ${{ secrets.CUSTOM_GH_TOKEN }}
