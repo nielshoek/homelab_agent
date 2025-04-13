@@ -12,7 +12,7 @@ import (
 type DeployRequest struct {
 	ApplicationName      string            `json:"application_name"`
 	EnvironmentVars      map[string]string `json:"environment_vars"`
-	ExtraFilesToDownload []string          `json:"extra_files_to_download"`
+	ExtraFilesToDownload []string          `json:"extra_files_to_download,omitempty"`
 }
 
 // Deploy token which requests are authenticated against.
