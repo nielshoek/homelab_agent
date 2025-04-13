@@ -10,8 +10,9 @@ import (
 )
 
 type DeployRequest struct {
-	ApplicationName string            `json:"application_name"`
-	EnvironmentVars map[string]string `json:"environment_vars"`
+	ApplicationName      string            `json:"application_name"`
+	EnvironmentVars      map[string]string `json:"environment_vars"`
+	ExtraFilesToDownload []string          `json:"extra_files_to_download"`
 }
 
 // Deploy token which requests are authenticated against.
@@ -62,7 +63,7 @@ func deployHandler(w http.ResponseWriter, r *http.Request) {
 
 	switch {
 	case deployRequest.ApplicationName != "":
-		err := handleDeployment(deployRequest.ApplicationName, deployRequest.EnvironmentVars)
+		err := handleDeployment(deployRequest)
 		if err != nil {
 			http.Error(w, "Failed to update Docker container.", http.StatusInternalServerError)
 			return
@@ -70,26 +71,32 @@ func deployHandler(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		w.Write(fmt.Appendf(nil, "Application '%s' updated successfully.\n", deployRequest.ApplicationName))
 	default:
-		http.Error(w, "Unknown event.", http.StatusBadRequest)
+		http.Error(w, "No application name provided.", http.StatusBadRequest)
 	}
 }
 
-func handleDeployment(applicationName string, environmentVars map[string]string) error {
-	if err := downloadDockerComposeFile(applicationName); err != nil {
-		return err
+func handleDeployment(deployRequest DeployRequest) error {
+	if err := downloadFile(deployRequest.ApplicationName, "docker-compose.yml"); err != nil {
+		return fmt.Errorf("Failed to download docker-compose.yml: %w", err)
+	}
+
+	for _, fileName := range deployRequest.ExtraFilesToDownload {
+		if err := downloadFile(deployRequest.ApplicationName, fileName); err != nil {
+			return fmt.Errorf("Failed to download %s: %w", fileName, err)
+		}
 	}
 
 	if err := loginToGitHubContainerRegistry(); err != nil {
 		return err
 	}
 
-	if err := deployDockerCompose(environmentVars); err != nil {
+	if err := deployDockerCompose(deployRequest.EnvironmentVars); err != nil {
 		return err
 	}
 
 	removeDanglingImages()
 
-	log.Printf("Application '%s' updated successfully.\n", applicationName)
+	log.Printf("Application '%s' updated successfully.\n", deployRequest.ApplicationName)
 	return nil
 }
 
@@ -97,6 +104,7 @@ func removeDanglingImages() {
 	cmd := exec.Command("docker", "image", "prune", "-f")
 	if err := cmd.Run(); err != nil {
 		log.Println("Failed to remove dangling images:", err)
+		return
 	}
 	log.Println("Removed dangling images.")
 }
@@ -131,35 +139,38 @@ func loginToGitHubContainerRegistry() error {
 	return nil
 }
 
-// Download the docker-compose.yml file from the GitHub repository.
-func downloadDockerComposeFile(applicationName string) error {
-	dockerComposePath := fmt.Sprintf(
-		"https://raw.githubusercontent.com/nielshoek/%s/main/docker-compose.yml",
-		applicationName)
-	outputPath := "./docker-compose.yml"
+// Download the file from the GitHub repository.
+func downloadFile(applicationName string, fileName string) error {
+	filePath := fmt.Sprintf(
+		"https://raw.githubusercontent.com/nielshoek/%s/main/%s",
+		applicationName,
+		fileName)
+	outputPath := fmt.Sprintf("./%s", fileName)
 	authHeader := fmt.Sprintf("Authorization: token %s", gitHubToken)
-	cmdDownloadDockerCompose := exec.Command(
+	cmdDownloadFile := exec.Command(
 		"curl",
 		"-H", authHeader,
 		"-o", outputPath,
 		"-w", "%{http_code}",
-		dockerComposePath)
-	curlOutput, err := cmdDownloadDockerCompose.CombinedOutput()
+		filePath)
+	curlOutput, err := cmdDownloadFile.CombinedOutput()
 
 	if err != nil {
-		log.Println("Failed to download docker-compose.yml:", err)
+		log.Printf("Failed to download %s: %v\n", fileName, err)
 		return err
 	}
 	if string(curlOutput[len(curlOutput)-3:]) != "200" {
 		log.Printf(
-			"Failed to download docker-compose.yml: HTTP status code %s\n",
+			"Failed to download %s: HTTP status code %s\n",
+			fileName,
 			string(curlOutput[len(curlOutput)-3:]))
 		return fmt.Errorf(
-			"Failed to download docker-compose.yml: HTTP status code %s",
+			"Failed to download %s: HTTP status code %s",
+			fileName,
 			string(curlOutput[len(curlOutput)-3:]))
 	}
 
-	log.Println("Downloaded docker-compose.yml successfully.")
+	log.Printf("Downloaded %s successfully.\n", fileName)
 
 	return nil
 }
