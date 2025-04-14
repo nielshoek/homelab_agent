@@ -121,7 +121,7 @@ func deployDockerCompose(environmentVars map[string]string, composeFileName stri
 	for key, value := range environmentVars {
 		envVars += fmt.Sprintf("%s=%s ", key, value)
 	}
-	command := "docker compose pull && " + envVars + " docker compose -f " + composeFileName + " up -d --remove-orphans"
+	command := "docker compose pull && " + envVars + " docker compose -f " + composeFileName + " up -d"
 	cmd := exec.Command("sh", "-c", command)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
