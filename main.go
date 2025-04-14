@@ -85,7 +85,7 @@ func handleDeployment(deployRequest DeployRequest) error {
 	}
 
 	for _, fileName := range deployRequest.ExtraFilesToDownload {
-		err := downloadFile(deployRequest.ApplicationName, fileName, dockerComposeOutputFileName)
+		err := downloadFile(deployRequest.ApplicationName, fileName, fileName)
 		if err != nil {
 			return fmt.Errorf("Failed to download %s: %w", fileName, err)
 		}
