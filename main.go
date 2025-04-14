@@ -76,12 +76,17 @@ func deployHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func handleDeployment(deployRequest DeployRequest) error {
-	if err := downloadFile(deployRequest.ApplicationName, "docker-compose.yml"); err != nil {
+	dockerComposeOutputFileName := fmt.Sprintf("docker-compose.%s.yml", deployRequest.ApplicationName)
+	if err := downloadFile(
+		deployRequest.ApplicationName,
+		"docker-compose.yml",
+		dockerComposeOutputFileName); err != nil {
 		return fmt.Errorf("Failed to download docker-compose.yml: %w", err)
 	}
 
 	for _, fileName := range deployRequest.ExtraFilesToDownload {
-		if err := downloadFile(deployRequest.ApplicationName, fileName); err != nil {
+		err := downloadFile(deployRequest.ApplicationName, fileName, dockerComposeOutputFileName)
+		if err != nil {
 			return fmt.Errorf("Failed to download %s: %w", fileName, err)
 		}
 	}
@@ -90,7 +95,8 @@ func handleDeployment(deployRequest DeployRequest) error {
 		return err
 	}
 
-	if err := deployDockerCompose(deployRequest.EnvironmentVars); err != nil {
+	err := deployDockerCompose(deployRequest.EnvironmentVars, dockerComposeOutputFileName)
+	if err != nil {
 		return err
 	}
 
@@ -110,12 +116,12 @@ func removeDanglingImages() {
 }
 
 // Pulls latest images and (re)starts the Docker containers.
-func deployDockerCompose(environmentVars map[string]string) error {
+func deployDockerCompose(environmentVars map[string]string, composeFileName string) error {
 	envVars := ""
 	for key, value := range environmentVars {
 		envVars += fmt.Sprintf("%s=%s ", key, value)
 	}
-	command := "docker compose pull && " + envVars + " docker compose up -d --remove-orphans"
+	command := "docker compose pull && " + envVars + " docker compose -f " + composeFileName + " up -d --remove-orphans"
 	cmd := exec.Command("sh", "-c", command)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
@@ -140,12 +146,12 @@ func loginToGitHubContainerRegistry() error {
 }
 
 // Download the file from the GitHub repository.
-func downloadFile(applicationName string, fileName string) error {
+func downloadFile(applicationName string, fileName string, outputName string) error {
 	filePath := fmt.Sprintf(
 		"https://raw.githubusercontent.com/nielshoek/%s/main/%s",
 		applicationName,
 		fileName)
-	outputPath := fmt.Sprintf("./%s", fileName)
+	outputPath := fmt.Sprintf("./%s", outputName)
 	authHeader := fmt.Sprintf("Authorization: token %s", gitHubToken)
 	cmdDownloadFile := exec.Command(
 		"curl",
