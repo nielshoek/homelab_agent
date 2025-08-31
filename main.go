@@ -194,14 +194,16 @@ func downloadFile(applicationName string, fileName string, outputName string) er
 
 // addNginxLocation creates an nginx location config and reloads nginx.
 func addNginxLocation(name string, path string, port int) error {
-	config := fmt.Sprintf(`location %s/ {
-    proxy_pass http://localhost:%d/;
-    proxy_set_header Host $host;
-    proxy_set_header X-Real-IP $remote_addr;
-    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-    proxy_set_header X-Forwarded-Proto $scheme;
+	log.Printf("Adding Nginx location for app '%s' at path '%s' on port %d", name, path, port)
 
-    proxy_redirect / /%s/;
+	config := fmt.Sprintf(`location %s/ {
+	proxy_pass http://localhost:%d/;
+	proxy_set_header Host $host;
+	proxy_set_header X-Real-IP $remote_addr;
+	proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+	proxy_set_header X-Forwarded-Proto $scheme;
+
+	proxy_redirect / /%s/;
 }
 `, path, port, name)
 
@@ -209,19 +211,26 @@ func addNginxLocation(name string, path string, port int) error {
 
 	configFileExists, statErr := os.Stat(configPath)
 	if statErr == nil && configFileExists != nil {
+		log.Printf("Nginx config for '%s' already exists at '%s', skipping creation.", name, configPath)
 		return nil
 	} else if statErr != nil && !os.IsNotExist(statErr) {
+		log.Printf("Failed to check nginx config for '%s': %v", name, statErr)
 		return fmt.Errorf("failed to check nginx config: %w", statErr)
 	}
 
+	log.Printf("Writing nginx config for '%s' to '%s'", name, configPath)
 	if err := os.WriteFile(configPath, []byte(config), 0644); err != nil {
+		log.Printf("Failed to write nginx config for '%s': %v", name, err)
 		return fmt.Errorf("failed to write nginx config: %w", err)
 	}
 
+	log.Printf("Reloading nginx after adding config for '%s'", name)
 	cmd := exec.Command("nginx", "-s", "reload")
 	if output, err := cmd.CombinedOutput(); err != nil {
+		log.Printf("Failed to reload nginx for '%s': %v\nOutput: %s", name, err, string(output))
 		return fmt.Errorf("failed to reload nginx: %v\nOutput: %s", err, string(output))
 	}
 
+	log.Printf("Nginx location for '%s' added and nginx reloaded successfully.", name)
 	return nil
 }
