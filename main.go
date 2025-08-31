@@ -13,6 +13,8 @@ type DeployRequest struct {
 	ApplicationName      string            `json:"application_name"`
 	EnvironmentVars      map[string]string `json:"environment_vars"`
 	ExtraFilesToDownload []string          `json:"extra_files_to_download"`
+	Port                 int               `json:"port"`
+	Path                 string            `json:"path"`
 }
 
 // Deploy token which requests are authenticated against.
@@ -65,7 +67,9 @@ func deployHandler(w http.ResponseWriter, r *http.Request) {
 	case deployRequest.ApplicationName != "":
 		err := handleDeployment(deployRequest)
 		if err != nil {
-			http.Error(w, "Failed to update Docker container.", http.StatusInternalServerError)
+			http.Error(w,
+				fmt.Sprintf("Failed to update Docker container: %v", err),
+				http.StatusInternalServerError)
 			return
 		}
 		w.WriteHeader(http.StatusOK)
@@ -98,6 +102,13 @@ func handleDeployment(deployRequest DeployRequest) error {
 	err := deployDockerCompose(deployRequest.EnvironmentVars, dockerComposeOutputFileName)
 	if err != nil {
 		return err
+	}
+
+	if deployRequest.Path != "" && deployRequest.Port != 0 {
+		err = addNginxLocation(deployRequest.ApplicationName, deployRequest.Path, deployRequest.Port)
+		if err != nil {
+			return fmt.Errorf("Failed to add Nginx location: %w", err)
+		}
 	}
 
 	removeDanglingImages()
@@ -177,6 +188,40 @@ func downloadFile(applicationName string, fileName string, outputName string) er
 	}
 
 	log.Printf("Downloaded %s successfully.\n", fileName)
+
+	return nil
+}
+
+// addNginxLocation creates an nginx location config and reloads nginx.
+func addNginxLocation(name string, path string, port int) error {
+	config := fmt.Sprintf(`location %s/ {
+    proxy_pass http://localhost:%d/;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+
+    proxy_redirect / /%s/;
+}
+`, path, port, name)
+
+	configPath := fmt.Sprintf("/etc/nginx/apps-enabled/%s.conf", name)
+
+	configFileExists, statErr := os.Stat(configPath)
+	if statErr == nil && configFileExists != nil {
+		return nil
+	} else if statErr != nil && !os.IsNotExist(statErr) {
+		return fmt.Errorf("failed to check nginx config: %w", statErr)
+	}
+
+	if err := os.WriteFile(configPath, []byte(config), 0644); err != nil {
+		return fmt.Errorf("failed to write nginx config: %w", err)
+	}
+
+	cmd := exec.Command("nginx", "-s", "reload")
+	if output, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("failed to reload nginx: %v\nOutput: %s", err, string(output))
+	}
 
 	return nil
 }
